@@ -1,0 +1,23 @@
+{
+  "checkedAt": "2026-11-11",
+  "description": "經查證的登記名稱與企業關係補充；不覆寫官方證券名單，也不代表涵蓋所有子公司或分公司。",
+  "registrations": [
+    {"id":"52687620","name":"明基健康生活股份有限公司","aliases":[],"source":"https://findbiz.nat.gov.tw/fts/company/52687620"},
+    {"id":"52718898","name":"保瑞聯邦股份有限公司","aliases":[],"source":"https://findbiz.nat.gov.tw/fts/company/52718898"},
+    {"id":"28115186","name":"保瑞聯邦股份有限公司新竹分公司","aliases":[],"source":"https://findbiz.nat.gov.tw/fts/company/52718898"},
+    {"id":"59031269","name":"英屬開曼群島商台南開曼股份有限公司台南分公司","aliases":[],"source":"https://findbiz.nat.gov.tw/fts/branch/59031269"},
+    {"id":"59027201","name":"英屬開曼群島商台南開曼股份有限公司台灣分公司","aliases":["英屬開曼群島商台南開曼股份有限公司"],"source":"https://findbiz.nat.gov.tw/fts/branch/59027201"},
+    {"id":"80352955","name":"漢來美食股份有限公司高雄分公司","aliases":[],"source":"https://findbiz.nat.gov.tw/fts/company/80352343"},
+    {"id":"53663007","name":"英屬維京群島商克麗緹娜行銷有限公司台灣分公司","aliases":["英屬維京群島商克麗緹娜行銷有限公司"],"source":"https://findbiz.nat.gov.tw/fts/company/53663007"}
+  ],
+  "edges": [
+    {"childID":"52687620","parentID":"23285106","kind":"子公司","source":"https://www.benqmedicaltech.com/msg/message-%E9%A2%A8%E9%9A%AA%E7%AE%A1%E7%90%86-271.html"},
+    {"childID":"52718898","parentID":"28708250","kind":"子公司","source":"https://7282915.fs1.hubspotusercontent-na1.net/hubfs/7282915/Website%20Files%20Other/Financials/2024/Bora%20FY2024%20consolidated%20financial%20statements_CN.pdf"},
+    {"childID":"28708250","parentID":"28684877","kind":"子公司","source":"https://bora-corp.com/acquire-weider-global-nutrition/?lang=zh-hant"},
+    {"childID":"28115186","parentID":"52718898","kind":"分公司","source":"https://findbiz.nat.gov.tw/fts/company/52718898"},
+    {"childID":"59031269","parentID":"36855058","kind":"分公司","source":"https://www.twse.com.tw/staticFiles/news/event/8a8216d6937afbb90193a8f7a22a0103.pdf","additionalSource":"https://findbiz.nat.gov.tw/fts/branch/59031269"},
+    {"childID":"59027201","parentID":"36855058","kind":"分公司","source":"https://www.twse.com.tw/staticFiles/news/event/8a8216d6937afbb90193a8f7a22a0103.pdf","additionalSource":"https://findbiz.nat.gov.tw/fts/branch/59027201"},
+    {"childID":"80352955","parentID":"80352343","kind":"分公司","source":"https://findbiz.nat.gov.tw/fts/company/80352343"},
+    {"childID":"53663007","parentID":"38488868","kind":"集團關聯企業（在台分公司）","source":"https://www.chlitina.com/tw/resreved-page","additionalSource":"https://findbiz.nat.gov.tw/fts/company/53663007"}
+  ]
+}

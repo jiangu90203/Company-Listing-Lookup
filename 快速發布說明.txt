@@ -1,0 +1,23 @@
+公司上市櫃快查 GitHub Pages 版 v1.3.0
+
+最快使用（固定隨附名單）
+1. ZIP 全部解壓縮，不要直接上傳 ZIP。
+2. 將解壓內容上傳到 GitHub repository 根目錄，index.html 必須在根目錄。
+3. Commit 到 main。
+4. Settings → Pages → Source：Deploy from a branch。
+5. Branch：main；Folder：/(root)；Save。
+6. 等待發布完成，點 Visit site。
+
+自動更新名單（建議）
+1. 整包上傳，包含 .github/workflows/pages.yml、scripts、tests、package.json。
+2. Settings → Pages → Source：GitHub Actions。
+3. Actions → Update public data and deploy Pages → Run workflow。
+4. 等 build 與 deploy 綠燈完成後，從 Settings → Pages 的 Visit site 開啟。
+
+不需 Token、API Key、Python 安裝或其他伺服器。
+網頁版不能靠雙擊本機 HTML 使用，必須經 GitHub Pages 或本機 HTTP 預覽。
+公司單筆查詢、名稱建議、批次匯入、空白列保留、來源、Excel／CSV／TSV 匯出均已保留。
+關聯分類代表子公司／分公司／集團企業，並非該公司獨立掛牌。
+內部名單只在瀏覽器處理；不要把實際商家名單上傳到公開 repository。
+
+完整操作、更新及排錯見 README.md。
