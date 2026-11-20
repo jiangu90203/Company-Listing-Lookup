@@ -1,13 +1,10 @@
 {
-  "updatedAt": "2026-11-19T09:12:22.450700+00:00",
+  "updatedAt": "2026-11-20T01:26:09.784018+00:00",
   "sources": {
+    "emerging": "updated",
+    "otc": "updated",
     "listed": "updated",
-    "emerging": "kept_previous",
-    "public": "updated",
-    "otc": "kept_previous"
+    "public": "updated"
   },
-  "failed": [
-    "emerging",
-    "otc"
-  ]
+  "failed": []
 }
