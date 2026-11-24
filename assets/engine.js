@@ -1,4 +1,4 @@
-export const VERSION = '1.3.0';
+export const VERSION = '1.4.0';
 export const normalize = value => String(value ?? '').normalize('NFKC').replace(/[\s\u200b\ufeff]/gu, '').replaceAll('臺', '台').toLowerCase();
 export const validID = value => /^\d{8}$/.test(value) && value !== '00000000';
 export const exactName = (company, name) => !!normalize(name) && [company.name, company.short?.replace(/\*+$/, ''), ...(company.aliases || [])].some(v => normalize(v) === normalize(name));
@@ -47,9 +47,13 @@ export class Engine {
     this.registered = relationships.registrations.map(r => this.enrich({ ...r, market: '未查得上市櫃紀錄', sourceKey: 'registry' }));
     this.all = [...this.official, ...this.registered.filter(c => !this.byID.has(c.id))];
     this.cache = new Map();
+    this.knownRemote = new Map();
   }
   enrich(input) {
-    if (this.byID.has(input.id)) return this.byID.get(input.id);
+    if (this.byID.has(input.id)) {
+      const issuer = this.byID.get(input.id);
+      return { ...issuer, aliases: [...(issuer.aliases || []), input.name, ...(input.aliases || [])], registrationSource: input.source, taxDate: input.taxDate };
+    }
     const registration = this.relationships.registrations.find(r => r.id === input.id);
     const c = { ...input, ...(registration || {}), aliases: [...(input.aliases || []), ...(registration?.aliases || [])], selfMarket: '未查得本體掛牌紀錄', relations: [] };
     const queue = [{ id: c.id, depth: 0, kinds: [], sources: [] }], visited = new Set([c.id]);
@@ -91,7 +95,29 @@ export class Engine {
     const q = normalize(name);
     return q.endsWith('分公司') ? this.official.filter(c => q.startsWith(normalize(c.name)) && q !== normalize(c.name)) : [];
   }
-  async registry(query, signal) {
+  async registry(input, signal) {
+    const key = normalize(input);
+    const query = validID(key) ? key : String(input).normalize('NFKC').trim();
+    let tax = [], indexError;
+    if (this.taxLookup) {
+      try { tax = (await this.taxLookup(query)).map(c => this.enrich(c)); }
+      catch (error) { indexError = error; }
+      if (signal?.aborted) throw signal.reason;
+      if (tax.some(c => c.id === query || exactName(c, query))) return tax;
+      // Omitting a legal prefix can identify several entities. Offer the choices immediately.
+      if (tax.some(c => normalize(c.name).replace(/^(社團法人|財團法人)/u, '') === key)) return tax;
+    }
+    try {
+      const learned = [...this.knownRemote.values()].filter(c => c.id === query || exactName(c, query));
+      const remote = [...learned, ...await this.remoteRegistry(query, signal)];
+      if (indexError && !remote.some(c => c.id === query || exactName(c, query))) throw indexError;
+      return [...new Map([...remote, ...tax].map(c => [c.id, c])).values()];
+    } catch (error) {
+      if (tax.length && !signal?.aborted) return tax;
+      throw error;
+    }
+  }
+  async remoteRegistry(query, signal) {
     if (this.cache.has(query)) return structuredClone(this.cache.get(query));
     const url = validID(query) ? `https://company.g0v.ronny.tw/api/show/${query}` : `https://company.g0v.ronny.tw/api/search?q=${encodeURIComponent(query)}`;
     const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 12000);
@@ -102,10 +128,21 @@ export class Engine {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const envelope = await response.json();
       if (!Object.hasOwn(envelope, 'data')) throw new Error('資料格式異常');
-      let rows = validID(query) ? (envelope.data && !Array.isArray(envelope.data) ? [{ ...envelope.data, 統一編號: query }] : []) : envelope.data;
+      let rows = envelope.data;
+      if (validID(query)) {
+        if (rows && !Array.isArray(rows) && typeof rows === 'object') {
+          if (rows.統一編號 && String(rows.統一編號) !== query) throw new Error('來源回傳不同統編');
+          rows = [{ ...rows, 統一編號: query }];
+        } else if (!rows || (Array.isArray(rows) && !rows.length)) rows = [];
+        else throw new Error('統編查詢格式異常');
+      }
       if (!Array.isArray(rows)) throw new Error('資料格式異常');
       const result = rows.map(r => this.parseRegistration(r)).filter(c => c.name && validID(c.id)).map(c => this.enrich(c));
-      this.cache.set(query, result);
+      if (rows.length && !result.length) throw new Error('登記資料缺少可核對的名稱或統編');
+      if (result.length) {
+        this.cache.set(query, result);
+        for (const c of result) this.knownRemote.set(c.id, c);
+      }
       return structuredClone(result);
     } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
   }
@@ -117,11 +154,13 @@ export class Engine {
       }
       return '';
     };
-    const c = { name: first(r, '公司名稱', '分公司名稱', '商業名稱', '名稱'), id: first(r, '統一編號'), address: first(r, '公司所在地', '分公司所在地', '地址'), chairman: first(r, '代表人姓名', '負責人姓名'), aliases: [], market: '未查得上市櫃紀錄', sourceKey: 'registry', registeredHeadID: first(r, '總(本)公司統一編號', '總公司統一編號') };
+    const c = { name: first(r, '公司名稱', '分公司名稱', '商業名稱', '營業人名稱', '名稱'), id: first(r, '統一編號'), address: first(r, '公司所在地', '分公司所在地', '地址'), chairman: first(r, '代表人姓名', '負責人姓名'), aliases: [], market: '未查得上市櫃紀錄', sourceKey: 'registry', registeredHeadID: first(r, '總(本)公司統一編號', '總公司統一編號') };
     const head = this.byID.get(c.registeredHeadID), branch = first(r, '分公司名稱');
     if (head && !first(r, '公司名稱') && branch) c.name = head.name + branch;
     const taxName = first(r['財政部'], '營業人名稱');
     if (taxName && (!c.name || taxName.includes('分公司'))) { if (c.name) c.aliases.push(c.name); c.name = taxName; }
+    if (taxName && taxName !== c.name) c.aliases.push(taxName);
+    c.address ||= first(r['財政部'], '營業地址');
     c.source = `https://company.g0v.ronny.tw/id/${c.id}`;
     return c;
   }
@@ -131,8 +170,8 @@ export class Engine {
 
 export function applyCompany(row, company, method) {
   row.company = company; row.status = company.market; row.method = method;
-  row.source = company.source;
-  row.date = displayDate(company.date);
+  row.source = [company.source, company.registrationSource].filter(Boolean).join('；');
+  row.date = displayDate(company.date || company.taxDate);
   if (company.relations?.length) {
     row.source = [company.source, ...company.relations.map(r => r.source)].join('；');
     row.note = '已查證企業關係；關聯公司掛牌，不表示輸入公司本身掛牌';
@@ -168,7 +207,9 @@ export async function resolveRow(engine, input, { online = false, signal } = {})
     applyCompany(row, named, '登記名稱與原統編交叉核對'); row.status = '待確認（名稱與統編不同主體）';
     row.note = `登記名稱對應 ${named.id}，原表提供 ${row.id}；請核對原統編`; return finish();
   }
-  const exact = engine.find(row.name, row.id);
+  // Pasted, headerless columns may mix names and eight-digit IDs. Keep the original cell for export.
+  const lookupID = row.id || (validID(normalize(row.name)) ? normalize(row.name) : '');
+  const exact = engine.find(row.name, lookupID);
   const assignPrecise = (precise, method) => {
     if (precise.length !== 1) return false;
     if (row.name && row.id && !exactName(precise[0], row.name)) {
@@ -178,7 +219,7 @@ export async function resolveRow(engine, input, { online = false, signal } = {})
   };
   if (assignPrecise(exact, '官方／已查證名稱或統編精準比對')) return finish();
   if (exact.length > 1) { row.status = '待確認（同名候選）'; row.candidates = exact; return finish(); }
-  const query = row.id || row.name;
+  const query = lookupID || row.name;
   let candidates = engine.suggest(query);
   if (online) {
     try {
@@ -188,13 +229,19 @@ export async function resolveRow(engine, input, { online = false, signal } = {})
       if (signal?.aborted) { row.status = '未查詢（已取消）'; return finish(); }
       row.status = '暫時無法確認（連線失敗）'; row.note = '公司補查連線失敗或遭瀏覽器限制，未視為未上市櫃'; row.candidates = candidates; return finish();
     }
-    const precise = candidates.filter(c => row.id ? c.id === row.id : exactName(c, row.name));
-    if (assignPrecise(precise, '登記資料確認統編後比對官方名單')) return finish();
+    const precise = candidates.filter(c => lookupID ? c.id === lookupID : exactName(c, row.name));
+    if (assignPrecise(precise, '登記資料確認統編後比對官方名單')) {
+      if (row.company?.sourceKey === 'registry') row.source += '；' + engine.sources();
+      return finish();
+    }
+    if (precise.length > 1) {
+      row.status = '待確認（同名候選）'; row.candidates = precise; return finish();
+    }
   }
   if (candidates.length) { row.status = '待確認（名稱不完整或不一致）'; row.candidates = candidates; row.note = '請依統編與地址選擇，未自動採用第一筆'; return finish(); }
   const parents = engine.suspectedBranch(row.name);
   if (parents.length) { row.status = '待確認（疑似掛牌公司分公司）'; row.note = `可能對應 ${parents.map(c => c.name + ' ' + c.code).join('、')}；缺少分公司登記證據`; return finish(); }
-  row.status = '未查得上市櫃紀錄'; row.method = online ? '官方名單及一般公司補查未命中' : '僅比對網站官方名單';
+  row.status = online ? '待確認（未找到登記資料）' : '未查得上市櫃紀錄'; row.method = online ? '官方名單及一般公司補查未命中' : '僅比對網站官方名單';
   row.note = '未查得不等同已確認未上市櫃' + (online ? '' : '；可開啟網路補查或前往商工登記確認');
   return finish();
 }

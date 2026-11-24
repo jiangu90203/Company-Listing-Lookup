@@ -29,6 +29,12 @@ jobs:
           python-version: '3.12'
       - name: Refresh official issuer snapshots
         run: python scripts/update_data.py
+      - name: Refresh tax register when due
+        run: |
+          if ! python scripts/update_tax.py; then
+            test -s data/tax/manifest.json || exit 1
+            echo "::warning::Tax update unavailable. Keeping the previous validated snapshot."
+          fi
       - name: Test matching and spreadsheet logic
         run: |
           node --test tests/*.test.mjs

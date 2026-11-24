@@ -1,9 +1,9 @@
-公司上市櫃快查 GitHub Pages 版 v1.3.0
+公司上市櫃快查 GitHub Pages 版 v1.4.0
 
 最快使用（固定隨附名單）
 1. ZIP 全部解壓縮，不要直接上傳 ZIP。
-2. 將解壓內容上傳到 GitHub repository 根目錄，index.html 必須在根目錄。
-3. Commit 到 main。
+2. 以 GitHub Desktop 開啟既有專案，將解壓內容複製到專案根目錄並覆蓋同名檔。請包含完整 data/tax/ 與 .github/。
+3. Commit to main → Push origin。既有網站可沿用目前 Pages 設定。
 4. Settings → Pages → Source：Deploy from a branch。
 5. Branch：main；Folder：/(root)；Save。
 6. 等待發布完成，點 Visit site。

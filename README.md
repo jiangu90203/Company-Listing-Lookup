@@ -1,4 +1,4 @@
-# 公司上市櫃快查｜GitHub Pages 版 v1.3.0
+# 公司上市櫃快查｜GitHub Pages 版 v1.4.0
 
 延續 Windows v1.2 的公司身分查核與已查證關聯，改為可直接發布到 GitHub Pages 的純靜態網站。不需要安裝程式、API 金鑰、付費代理或額外伺服器。
 
@@ -6,7 +6,7 @@
 
 1. 將 ZIP **完整解壓縮**。不要直接上傳 ZIP。
 2. 在 GitHub 建立一個新 repository，或開啟要放這個工具的 repository。此套件不依賴固定 repository 名稱。
-3. 把解壓後的 **index.html、assets、data、vendor、examples、.nojekyll** 放在 repository 根目錄並 Commit 到 `main`。必須上傳資料夾內的檔案，避免多包一層 `CompanyQuickCheck...` 資料夾。GitHub 網頁版可使用 Add file → Upload files 拖入整包解壓內容；若看不到 `.github`，可使用 GitHub Desktop 上傳。
+3. 把解壓後的 **index.html、assets、data、vendor、examples、.nojekyll** 放在 repository 根目錄並 Commit 到 `main`。必須上傳資料夾內的檔案，避免多包一層 `CompanyQuickCheck...` 資料夾。建議用 GitHub Desktop 一次提交所有分檔及隱藏的 `.github` 資料夾。
 4. 進入 **Settings → Pages → Build and deployment**，Source 選 **Deploy from a branch**；Branch 選 `main`，資料夾選 `/(root)`，按 Save。
 5. 等待 GitHub 顯示發布完成，點選 Pages 頁面的 **Visit site**。從該網址開啟即可使用；不要雙擊本機 `index.html`。
 
@@ -35,7 +35,7 @@
 
 - 覆蓋相同路徑的 `index.html`、`assets/`、`data/`、`vendor/` 與相關設定，並 Commit／Push 到 Pages 使用的分支。
 - 新版放在另一個子資料夾但仍開原網址，會繼續看到原版。若要保留歷史版，請把歷史版放在 `archive/`，目前版本仍放在發布根目錄。
-- 更新後確認 Actions／Pages 部署成功，再以 Ctrl+F5 重新整理。畫面右上角應為 **網頁版 1.3.0**。
+- 更新後確認 Actions／Pages 部署成功，再以 Ctrl+F5 重新整理。畫面右上角應為 **網頁版 1.4.0**。
 - 本版沒有 Service Worker；不會保留背景離線快取。頁面仍可能受 GitHub 與瀏覽器的正常 HTTP 快取影響。
 
 ## 使用方式
@@ -46,13 +46,13 @@
 
 畫面分開顯示本體掛牌身分、統編、股票代號及已查證關聯，並提供來源連結和複製結果。已查證子公司／分公司不會沿用掛牌公司的股票代號當作自己掛牌。
 
-勾選「網路補查一般公司」後，查詢按鈕才會把名稱或統編傳到 `company.g0v.ronny.tw`；不會隨每個輸入字元自動傳送。補查來源為民間整理政府資料，可能有更新落差。無法連線或跨來源限制會顯示「暫時無法確認」，不視為確認未上市。
+「同時查詢一般公司與團體」在單筆及批次都預設開啟。先向站內財政部營業中稅籍快照比對，仍無精準結果時，才以名稱或統編補查 `company.g0v.ronny.tw`；不會隨每個輸入字元自動傳送。補查來源為民間整理政府資料，可能有更新落差。無法連線或跨來源限制會顯示「暫時無法確認」，不視為確認未上市。
 
 ### 批次比對
 
 1. 切換「試算表批次比對」，拖入 XLSX、XLS、UTF-8／UTF-16 CSV、TSV，也可直接貼上 Excel／Google 試算表多欄名單。
 2. 確認工作表、公司欄、統編欄與開始／結束列。沒有統編欄就選「無此欄位」，**shop id 不會自動當成統編**。也支援僅統編的一欄名單。
-3. 預覽會分列待比對、缺少名稱及排除列。按「開始批次比對」。未命中公司可選擇開啟網路補查；只傳每列公司名稱或統編，不傳整份檔案。
+3. 預覽會分列待比對、缺少名稱及排除列。按「開始批次比對」。可取消勾選一般公司查詢，僅比對掛牌及已查證關聯名單；只傳每列公司名稱或統編，不傳整份檔案。
 4. 待確認列按「核對」查看候選、地址與統編，確認同一法律主體後再採用。
 5. 選「只貼分類」或「分類＋來源」，按「複製貼回結果」，**從畫面指定的原表起始列貼到空白欄**。貼回前請取消原表篩選；不要先排序、刪列或只複製篩選後的部分原表。
 
@@ -110,3 +110,10 @@ python scripts/make_site.py
 ## 授權
 
 程式碼依 MIT 授權，詳見 `LICENSE`。SheetJS CE 0.20.3 為 Apache-2.0 授權，完整元件與授權隨附於 `vendor/`；來源 https://cdn.sheetjs.com/ 。官方資料依「政府資料開放授權條款－第 1 版」使用：https://data.gov.tw/license 。原始資料、登記內容及民間服務權利屬各提供者。
+
+
+### 稅籍索引與更新
+
+財政部財政資訊中心「全國營業（稅籍）登記資料集」提供營業中登記資料，採政府資料開放授權條款第 1 版。來源 https://data.gov.tw/dataset/9400 。每個名稱和統編來自同一筆原始記錄，完整同名會列出候選，名稱前綴支援兩字以上。網站按需載入索引分檔，發布時請包含整個 `data/tax/`。
+
+使用既有 GitHub Actions 工作流程時，來源快照滿七天會嘗試重建稅籍索引。下載或驗證失敗會保留上次快照，網站顯示實際資料日期。手動建置可使用 `python scripts/update_tax.py`。停歇業、尚未收錄的團體及純品牌名，需另行核對。
