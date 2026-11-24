@@ -1,4 +1,4 @@
-export const VERSION = '1.4.0';
+export const VERSION = '1.5.0';
 export const normalize = value => String(value ?? '').normalize('NFKC').replace(/[\s\u200b\ufeff]/gu, '').replaceAll('臺', '台').toLowerCase();
 export const validID = value => /^\d{8}$/.test(value) && value !== '00000000';
 export const exactName = (company, name) => !!normalize(name) && [company.name, company.short?.replace(/\*+$/, ''), ...(company.aliases || [])].some(v => normalize(v) === normalize(name));
@@ -52,7 +52,7 @@ export class Engine {
   enrich(input) {
     if (this.byID.has(input.id)) {
       const issuer = this.byID.get(input.id);
-      return { ...issuer, aliases: [...(issuer.aliases || []), input.name, ...(input.aliases || [])], registrationSource: input.source, taxDate: input.taxDate };
+      return { ...issuer, aliases: [...(issuer.aliases || []), input.name, ...(input.aliases || [])], registrationSource: input.source, taxDate: input.taxDate, taxAddress: input.taxAddress, remoteTax: input.remoteTax };
     }
     const registration = this.relationships.registrations.find(r => r.id === input.id);
     const c = { ...input, ...(registration || {}), aliases: [...(input.aliases || []), ...(registration?.aliases || [])], selfMarket: '未查得本體掛牌紀錄', relations: [] };
@@ -160,8 +160,21 @@ export class Engine {
     const taxName = first(r['財政部'], '營業人名稱');
     if (taxName && (!c.name || taxName.includes('分公司'))) { if (c.name) c.aliases.push(c.name); c.name = taxName; }
     if (taxName && taxName !== c.name) c.aliases.push(taxName);
-    c.address ||= first(r['財政部'], '營業地址');
     c.source = `https://company.g0v.ronny.tw/id/${c.id}`;
+    const tax = r['財政部'];
+    if (tax) {
+      const { year, month, day } = tax.設立日期 || {};
+      c.remoteTax = {
+        address: first(tax, '營業地址', '營業（稅籍）登記地址'),
+        organization: first(tax, '組織別名稱'),
+        founded: year && month && day ? `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}` : '',
+        capital: first(tax, '資本額'),
+        invoice: first(tax, '使用統一發票'),
+        source: c.source
+      };
+      c.registeredHeadID ||= first(tax, '總機構統一編號');
+    }
+    c.taxAddress = c.remoteTax?.address || first(r, '營業地址');
     return c;
   }
   sources() { return this.datasets.map(d => d.reference).join('；'); }

@@ -1,4 +1,4 @@
-"""Build the two public lookup indexes from the same Ministry of Finance CSV."""
+"""Build lookup and registration details from one Ministry of Finance snapshot."""
 import argparse
 import csv
 import datetime as dt
@@ -18,6 +18,7 @@ SOURCE = 'https://eip.fia.gov.tw/data/BGMOPEN1.zip'
 REFERENCE = 'https://data.gov.tw/dataset/9400'
 SPACE = re.compile(r'[\s\u200b\ufeff]+')
 LEGAL = re.compile(r'^(社團法人|財團法人)')
+DETAIL_COLUMNS = ('營業地址', '組織別名稱', '設立日期', '資本額', '使用統一發票')
 AS_OF = re.compile(r'\d{2}-[A-Z]{3}-\d{2}')
 
 
@@ -33,10 +34,11 @@ def bucket(name):
 def build(archive, out):
     names = [[] for _ in range(64)]
     ids = [[] for _ in range(16)]
+    details = [[] for _ in range(128)]
     total = 0
     with zipfile.ZipFile(archive) as z, z.open('BGMOPEN1.csv') as raw:
         reader = csv.DictReader(io.TextIOWrapper(raw, encoding='utf-8-sig', newline=''))
-        required = {'營業人名稱', '統一編號', '營業地址', '總機構統一編號'}
+        required = {'營業人名稱', '統一編號', '營業地址', '總機構統一編號', *DETAIL_COLUMNS}
         if not required.issubset(reader.fieldnames or []):
             raise ValueError('Unexpected tax register columns')
         date = None
@@ -54,18 +56,20 @@ def build(archive, out):
             head = row['總機構統一編號'].strip()
             names[section].append('\t'.join((uid, name, area[0] if area else '', head)))
             ids[int(uid) % 16].append(uid + '\t' + str(section))
+            fields = [re.sub(r'[\t\r\n]+', ' ', row[column]).strip() for column in DETAIL_COLUMNS]
+            details[int(uid) % len(details)].append('\t'.join((uid, *fields)))
             total += 1
     if total < 1_000_000 or not date or dt.date.fromisoformat(date) > dt.date.today() + dt.timedelta(days=1):
         raise ValueError('Incomplete or undated tax register')
     parts = {}
     out.mkdir()
-    for prefix, sections in [('n', names), ('i', ids)]:
+    for prefix, sections in [('n', names), ('i', ids), ('d', details)]:
         for i, rows in enumerate(sections):
             key = f'{prefix}{i}'
             payload = ('\n'.join(sorted(rows)) + '\n').encode()
             parts[key] = hashlib.sha256(payload).hexdigest()[:16]
             (out / (key + '.txt')).write_bytes(payload)
-    manifest = dict(schema=1, count=total, date=date, source=REFERENCE, parts=parts)
+    manifest = dict(schema=2, count=total, date=date, source=REFERENCE, parts=parts)
     (out / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
     return manifest
 
@@ -76,7 +80,7 @@ def main():
     args = parser.parse_args()
     dest = ROOT / 'data' / 'tax'
     old = json.loads((dest / 'manifest.json').read_text()) if dest.exists() else {}
-    if not args.archive and old and (dt.date.today() - dt.date.fromisoformat(old['date'])).days < 7:
+    if not args.archive and old.get('schema') == 2 and (dt.date.today() - dt.date.fromisoformat(old['date'])).days < 7:
         return
     with tempfile.TemporaryDirectory(dir=dest.parent) as tmp:
         stage = Path(tmp)

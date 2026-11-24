@@ -84,3 +84,14 @@ test('每筆名稱及統編都可路由到相同分檔，沒有漏列或錯列',
   }
   assert.equal(names, manifest.count); assert.equal(ids, names);
 });
+
+test('公司名稱與統編皆對到同一筆完整稅籍明細', async () => {
+  const [result] = await register.lookup(name);
+  const full = await register.details(result.id);
+  assert.equal(full.address.normalize('NFKC').replace(/\s/g, ''), '嘉義市西區竹圍里友愛路288號5樓之5');
+  assert.equal(full.organization, '其他');
+  assert.equal(full.capital, '3000');
+  assert.equal(full.invoice, 'Y');
+  assert.equal(full.date, manifest.date);
+  assert.deepEqual(await register.details((await register.lookup(id))[0].id), full);
+});

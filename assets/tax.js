@@ -9,7 +9,8 @@ function nameBucket(key) {
 
 export class TaxIndex {
   constructor(manifest, read) {
-    if (manifest?.schema !== 1 || Object.keys(manifest.parts || {}).length !== 80) throw new Error('稅籍索引不完整');
+    const partCount = { 1: 80, 2: 208 }[manifest?.schema];
+    if (!partCount || Object.keys(manifest.parts || {}).length !== partCount) throw new Error('稅籍索引不完整');
     this.manifest = manifest;
     this.read = read;
     this.cache = new Map();
@@ -30,13 +31,21 @@ export class TaxIndex {
     if (!this.cache.has(key)) {
       const pending = this.read(key).then(text => {
         if (!/^\d{8}\t/.test(text)) throw new Error('稅籍索引格式異常');
-        return text.trimEnd().split('\n').map(line => line.split('\t'));
+        return text.replace(/\r?\n$/, '').split('\n').map(line => line.split('\t'));
       });
       this.cache.set(key, pending);
       pending.catch(() => { if (this.cache.get(key) === pending) this.cache.delete(key); });
       if (this.cache.size > 8) this.cache.delete(this.cache.keys().next().value);
     }
     return this.cache.get(key);
+  }
+
+  async details(id) {
+    if (this.manifest.schema < 2 || !/^\d{8}$/.test(id)) return undefined;
+    const entry = (await this.part('d' + Number(id) % 128)).find(row => row[0] === id);
+    if (!entry) return undefined;
+    const [, address, organization, founded, capital, invoice] = entry;
+    return { address, organization, founded, capital, invoice, date: this.manifest.date, source: this.manifest.source };
   }
 
   async lookup(input) {
