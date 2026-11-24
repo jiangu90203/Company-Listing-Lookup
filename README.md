@@ -1,4 +1,4 @@
-# 公司上市櫃快查｜GitHub Pages 版 v1.5.1
+# 公司上市櫃快查｜GitHub Pages 版 v1.5.2
 
 延續 Windows v1.2 的公司身分查核與已查證關聯，改為可直接發布到 GitHub Pages 的純靜態網站。不需要安裝程式、API 金鑰、付費代理或額外伺服器。
 
@@ -35,7 +35,7 @@
 
 - 覆蓋相同路徑的 `index.html`、`assets/`、`data/`、`vendor/` 與相關設定，並 Commit／Push 到 Pages 使用的分支。
 - 新版放在另一個子資料夾但仍開原網址，會繼續看到原版。若要保留歷史版，請把歷史版放在 `archive/`，目前版本仍放在發布根目錄。
-- 更新後確認 Actions／Pages 部署成功，再以 Ctrl+F5 重新整理。頁尾應顯示 **v1.5.1**。
+- 更新後確認 Actions／Pages 部署成功，再以 Ctrl+F5 重新整理。頁尾應顯示 **v1.5.2**。
 - 本版沒有 Service Worker；不會保留背景離線快取。頁面仍可能受 GitHub 與瀏覽器的正常 HTTP 快取影響。
 
 ## 使用方式

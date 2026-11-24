@@ -1,4 +1,4 @@
-export const VERSION = '1.5.1';
+export const VERSION = '1.5.2';
 export const normalize = value => String(value ?? '').normalize('NFKC').replace(/[\s\u200b\ufeff]/gu, '').replaceAll('臺', '台').toLowerCase();
 export const validID = value => /^\d{8}$/.test(value) && value !== '00000000';
 export const exactName = (company, name) => !!normalize(name) && [company.name, company.short?.replace(/\*+$/, ''), ...(company.aliases || [])].some(v => normalize(v) === normalize(name));

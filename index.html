@@ -7,9 +7,9 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://company.g0v.ronny.tw; object-src 'none'; base-uri 'self'; form-action 'none'">
   <title>公司上市櫃快查</title>
   <link rel="icon" href="./assets/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="./assets/style.css?v=1.5.1">
+  <link rel="stylesheet" href="./assets/style.css?v=1.5.2">
   <script defer src="./vendor/xlsx.full.min.js"></script>
-  <script type="module" src="./assets/app.js?v=1.5.1"></script>
+  <script type="module" src="./assets/app.js?v=1.5.2"></script>
 </head>
 <body>
   <header class="topbar">
@@ -19,38 +19,44 @@
   <main>
     <div id="global-message" class="notice" role="status">載入名單…</div>
     <nav class="tabs" aria-label="查詢方式">
-      <button id="tab-single" class="tab active" aria-selected="true" aria-controls="single-panel">即時查詢</button>
-      <button id="tab-batch" class="tab" aria-selected="false" aria-controls="batch-panel">試算表比對</button>
-    </nav>
-    <section id="single-panel" class="workspace">
-      <div class="card search-card">
-        <form id="search-form">
-          <label for="query" class="section-label">公司、團體名稱或統編</label>
-          <div class="searchbar">
-            <input id="query" type="search" autocomplete="off" placeholder="台積電, 26413625" aria-describedby="search-note" disabled>
-            <button id="search-btn" class="primary" disabled>查詢</button>
-          </div>
-        </form>
-        <div class="search-tools">
-          <p id="search-note" class="muted" role="status">多筆請用逗號分隔。</p>
-          <label class="check"><input id="single-online" type="checkbox" checked>含一般登記及外部補查</label>
-        </div>
+      <div id="tab-switch" class="tab-switch" role="tablist" aria-label="查詢方式" data-active="single">
+        <button id="tab-single" class="tab" role="tab" aria-selected="true" aria-controls="single-panel">即時查詢</button>
+        <button id="tab-batch" class="tab" role="tab" aria-selected="false" aria-controls="batch-panel" tabindex="-1">試算表比對</button>
       </div>
-      <aside id="history" class="recent-row" aria-label="最近查詢" hidden>
-        <h2>最近查詢</h2>
-        <div id="recent-list" class="recent-list"></div>
-        <button id="clear-recent" type="button" class="field-copy" aria-label="清除最近查詢" hidden>清除</button>
-      </aside>
+    </nav>
+    <section id="single-panel" class="workspace" role="tabpanel" aria-labelledby="tab-single">
+      <div class="search-layout">
+        <div class="card search-card">
+          <form id="search-form">
+            <label for="query" class="section-label">公司、團體名稱或統編</label>
+            <div class="searchbar">
+              <input id="query" type="search" autocomplete="off" placeholder="台積電, 26413625" aria-describedby="search-note" disabled>
+              <button id="search-btn" class="primary" disabled>查詢</button>
+            </div>
+          </form>
+          <div class="search-tools">
+            <p id="search-note" class="muted" role="status">多筆請用逗號分隔。</p>
+            <label class="check"><input id="single-online" type="checkbox" checked>含一般登記及外部補查</label>
+          </div>
+        </div>
+        <aside id="history" class="card recent-card" aria-labelledby="history-title">
+          <div class="recent-heading">
+            <h2 id="history-title">最近查詢</h2>
+            <button id="clear-recent" type="button" class="field-copy" aria-label="清除最近查詢" hidden>清除</button>
+          </div>
+          <div id="recent-list" class="recent-list"></div>
+        </aside>
+      </div>
       <section id="company-result" class="search-results" aria-label="查詢結果" hidden></section>
     </section>
-    <section id="batch-panel" hidden>
+    <section id="batch-panel" role="tabpanel" aria-labelledby="tab-batch" hidden>
       <div class="card"><div class="section-heading"><div><h2>匯入公司名單</h2><p class="muted">XLSX、XLS、CSV、TSV</p></div><a class="text-link" href="./examples/批次比對範例.csv" download>下載範例 CSV</a></div><label id="dropzone" class="dropzone"><span class="upload-icon" aria-hidden="true">＋</span><strong>拖曳或選取檔案</strong><span>每檔 50 MB，最多 20,000 列 × 256 欄</span><input id="file-input" type="file" accept=".xlsx,.xls,.csv,.tsv,.txt"></label><details class="paste-details"><summary>貼上試算表資料</summary><textarea id="paste-input" rows="5" placeholder="貼上名稱、統編或整段資料"></textarea><button id="use-paste" class="secondary">使用貼上資料</button></details></div>
       <div id="mapping-card" class="card" hidden><div class="section-heading"><div><h2>確認比對範圍</h2><p id="file-info" class="muted"></p></div></div><div class="mapping-grid"><label>工作表<select id="sheet-select"></select></label><label>公司名稱欄<select id="name-col"></select></label><label>統編欄<select id="id-col"></select></label><label>開始列<input id="start-row" type="number" min="1"></label><label>結束列<input id="end-row" type="number" min="1"></label></div><details><summary>原表核對欄位</summary><div class="mapping-grid advanced"><label>原表市場<select id="market-col"></select></label><label>原表股票代號<select id="code-col"></select></label></div></details><div id="preview-note" class="notice subtle"></div><div class="table-scroll preview-scroll"><table><thead><tr><th>原列</th><th>公司名稱</th><th>統編</th><th>處理方式</th></tr></thead><tbody id="preview-body"></tbody></table></div><div class="run-bar"><label class="check"><input id="batch-online" type="checkbox" checked>含一般登記及外部補查</label><button id="run-batch" class="primary" disabled>開始批次比對</button><button id="stop-batch" class="secondary" hidden>停止</button></div></div>
-      <div id="batch-results" class="card" hidden><div class="section-heading"><div><h2>比對結果</h2><p id="result-summary" class="muted" aria-live="polite"></p></div></div><progress id="batch-progress" value="0" max="100" aria-label="批次比對進度"></progress><div class="metrics"><div><strong id="count-official">0</strong><span>本體掛牌</span></div><div><strong id="count-related">0</strong><span>已查證關聯</span></div><div><strong id="count-pending">0</strong><span>待確認／待查詢</span></div><div><strong id="count-excluded">0</strong><span>保留空白／分批列</span></div></div><div class="export-bar"><label class="compact-label">貼回內容<select id="copy-mode"><option value="classification">只貼分類（1 欄）</option><option value="source">分類＋來源（2 欄）</option></select></label><button id="copy-batch" class="primary">複製貼回結果</button><button id="export-tsv" class="secondary">下載貼回 TSV</button><button id="export-xlsx" class="secondary">匯出 Excel</button><button id="export-csv" class="secondary">完整 CSV</button></div><p id="paste-location" class="paste-location"></p><div class="filter-bar"><label>顯示<select id="result-filter"><option value="all">全部列</option><option value="pending">待確認／缺少名稱</option><option value="related">關聯公司</option><option value="official">本體掛牌</option><option value="excluded">排除的分批／空白列</option></select></label><span class="muted">匯出含全部原列</span></div><div class="table-scroll"><table class="results-table"><thead><tr><th>原列</th><th>公司名稱</th><th>分類結果</th><th>對應公司／備註</th><th>檢視</th></tr></thead><tbody id="results-body"></tbody></table></div><div class="pagination"><button id="prev-page" class="secondary">上一頁</button><span id="page-label"></span><button id="next-page" class="secondary">下一頁</button></div></div>
+      <div id="batch-results" class="card" hidden><div class="section-heading"><div><h2>比對結果</h2><p id="result-summary" class="muted" aria-live="polite"></p></div></div><progress id="batch-progress" value="0" max="100" aria-label="批次比對進度"></progress><div id="batch-row-progress"></div><div class="metrics"><div><strong id="count-official">0</strong><span>本體掛牌</span></div><div><strong id="count-related">0</strong><span>已查證關聯</span></div><div><strong id="count-pending">0</strong><span>待確認／待查詢</span></div><div><strong id="count-excluded">0</strong><span>保留空白／分批列</span></div></div><div class="export-bar"><label class="compact-label">貼回內容<select id="copy-mode"><option value="classification">只貼分類（1 欄）</option><option value="source">分類＋來源（2 欄）</option></select></label><button id="copy-batch" class="primary">複製貼回結果</button><button id="export-tsv" class="secondary">下載貼回 TSV</button><button id="export-xlsx" class="secondary">匯出 Excel</button><button id="export-csv" class="secondary">完整 CSV</button></div><p id="paste-location" class="paste-location"></p><div class="filter-bar"><label>顯示<select id="result-filter"><option value="all">全部列</option><option value="pending">待確認／缺少名稱</option><option value="related">關聯公司</option><option value="official">本體掛牌</option><option value="excluded">排除的分批／空白列</option></select></label><span class="muted">匯出含全部原列</span></div><div class="table-scroll"><table class="results-table"><thead><tr><th>原列</th><th>公司名稱</th><th>分類結果</th><th>對應公司／備註</th><th>檢視</th></tr></thead><tbody id="results-body"></tbody></table></div><div class="pagination"><button id="prev-page" class="secondary">上一頁</button><span id="page-label"></span><button id="next-page" class="secondary">下一頁</button></div></div>
     </section>
     <section id="data-notes" class="card data-card"><div class="section-heading"><div><h2>資料來源與更新</h2></div><button id="reload-data" class="secondary">重新載入名單</button></div><div id="data-sources" class="source-grid"></div><p id="tax-date" class="muted"></p><p id="relationship-date" class="muted"></p><details><summary>查核範圍與資料處理</summary><p>掛牌結果依上列名單比對。關聯資料逾 90 天列待複核。</p><p>外部補查僅傳送名稱或統編至「台灣公司資料」。試算表及最近查詢保存在目前瀏覽器。</p></details></section>
   </main>
-  <footer><span>公司上市櫃快查 · GitHub Pages 版</span><span class="version">v1.5.1</span></footer>
+  <footer><span>公司上市櫃快查 · GitHub Pages 版</span><span class="version">v1.5.2</span></footer>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
   <dialog id="review-dialog"><div class="dialog-top"><h2 id="review-title">核對本列</h2><button id="close-review" class="icon-button" aria-label="關閉">✕</button></div><div id="review-body"></div></dialog>
   <dialog id="clipboard-dialog"><div class="dialog-top"><h2>手動複製結果</h2><button id="close-clipboard" class="icon-button" aria-label="關閉">✕</button></div><p>請全選下方文字後複製。</p><textarea id="clipboard-text" rows="12" readonly></textarea><button id="select-clipboard" class="primary">全選文字</button></dialog>

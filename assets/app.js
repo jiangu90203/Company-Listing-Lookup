@@ -1,5 +1,5 @@
-import { normalize, Engine, displayDate, exactName, applyCompany, auditReference, resolveRow } from './engine.js?v=1.5.1';
-import { TaxIndex } from './tax.js?v=1.5.1';
+import { normalize, Engine, displayDate, exactName, applyCompany, auditReference, resolveRow } from './engine.js?v=1.5.2';
+import { TaxIndex } from './tax.js?v=1.5.2';
 import { parseDelimited, detectMapping, buildRows, worksheetToSheet, bestWorksheetName, guardArchive, columnName, makeTSV, makeCSV, reportCells, alignedCells, counts } from './batch.js';
 
 const $ = id => document.getElementById(id);
@@ -7,6 +7,62 @@ const node = (tag, text = '', className = '') => { const n = document.createElem
 let engine, book, sheet, mapping, preview = [], results = [], running = false, controller, page = 0, toastTimer;
 const message = (text, type = '') => { $('global-message').className = `notice ${type}`; $('global-message').textContent = text; $('global-message').hidden = !text; };
 function toast(text) { $('toast').textContent = text; $('toast').hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => $('toast').hidden = true, 4200); }
+function lookupProgress(container, label, signal) {
+  const wrap = node('div', '', 'lookup-progress');
+  const title = node('span', label, 'lookup-label');
+  const percentage = node('span', '0%', 'lookup-percent');
+  const track = node('div', '', 'lookup-track');
+  const fill = node('div', '', 'lookup-fill');
+  track.setAttribute('role', 'progressbar');
+  track.setAttribute('aria-label', label);
+  track.setAttribute('aria-valuemin', '0');
+  track.setAttribute('aria-valuemax', '100');
+  percentage.setAttribute('aria-hidden', 'true');
+  track.append(fill);
+  wrap.append(title, percentage, track);
+  wrap.hidden = true;
+  container.append(wrap);
+  let interval, dismiss, displayed = -1;
+
+  function setProgress(value) {
+    if (value === displayed) return;
+    displayed = value;
+    percentage.textContent = value + '%';
+    track.setAttribute('aria-valuenow', String(value));
+    track.setAttribute('aria-valuetext', value === 100 ? '完成' : `預估 ${value}%`);
+    fill.style.transform = `scaleX(${value / 100})`;
+  }
+
+  function clear() {
+    clearTimeout(start);
+    clearInterval(interval);
+    clearTimeout(dismiss);
+    signal?.removeEventListener('abort', clear);
+    wrap.remove();
+  }
+
+  const start = setTimeout(() => {
+    const began = performance.now();
+    setProgress(0);
+    wrap.hidden = false;
+    interval = setInterval(() => {
+      const elapsed = performance.now() - began;
+      setProgress(Math.min(94, Math.floor(100 * (1 - Math.exp(-elapsed / 2200)))));
+    }, 125);
+  }, 260);
+  signal?.addEventListener('abort', clear, { once: true });
+
+  return (success = true) => {
+    if (!success || wrap.hidden || signal?.aborted) {
+      clear();
+      return;
+    }
+    clearInterval(interval);
+    title.textContent = '完成';
+    setProgress(100);
+    dismiss = setTimeout(clear, 350);
+  };
+}
 function badge(status) { return node('span', status || '保留空格', 'badge ' + (/^(待|暫時|未查詢|缺少)/.test(status) ? 'pending' : status?.includes('關聯') ? 'related' : ['上市', '上櫃', '興櫃'].includes(status) ? '' : 'unknown')); }
 function safeLink(url, label) {
   try { const u = new URL(url); if (!['https:', 'http:'].includes(u.protocol)) return node('span', label); } catch { return node('span', label); }
@@ -73,7 +129,7 @@ function companySources(c, tax) {
   return [...sources].map(([url, label]) => [label, url]);
 }
 
-function showCompany(box, c) {
+function showCompany(box, c, completeProgress) {
   const heading = node('div', '', 'result-heading');
   const name = node('div', '', 'record-name');
   const nameRow = node('div', '', 'name-row');
@@ -123,13 +179,18 @@ function showCompany(box, c) {
     ...c.relations.map(r => ['關聯公司', `${r.name} · ${r.code} · ${r.market} · ${r.kind}\n${r.source}`])
   ].map(([label, value]) => `${label}：${value}`).join('\n')));
   renderDetails(c.remoteTax);
-  if (!c.id) return;
-  detailStatus.textContent = '載入稅籍明細…';
+  if (!c.id) {
+    completeProgress?.();
+    return;
+  }
+  const finish = completeProgress || lookupProgress(box, '稅籍明細 · 預估進度');
   const currentEngine = engine;
   currentEngine.taxDetails(c.id).then(tax => {
-    if (box.contains(grid)) renderDetails(tax || c.remoteTax);
+    if (grid.isConnected && box.contains(grid)) renderDetails(tax || c.remoteTax);
+    finish();
   }).catch(() => {
-    if (!box.contains(grid)) return;
+    finish(false);
+    if (!grid.isConnected || !box.contains(grid)) return;
     detailStatus.textContent = '稅籍明細暫時無法載入。';
     const retry = node('button', '重試', 'field-copy');
     retry.addEventListener('click', () => showCompany(box, c));
@@ -148,7 +209,7 @@ function renderRecent() {
   const container = $('recent-list');
   container.replaceChildren();
   $('clear-recent').hidden = !recent.length;
-  $('history').hidden = !recent.length;
+  if (!recent.length) container.append(node('p', '尚無查詢紀錄', 'muted'));
   for (const entry of recent) {
     const button = node('button', entry.name, 'recent-item');
     button.type = 'button';
@@ -232,10 +293,11 @@ async function search({ live = false } = {}) {
     const article = node('article', '', 'card result-card');
     const body = node('div');
     if (queries.length > 1) article.append(node('p', query, 'query-label'));
-    article.append(body);
-    body.append(node('p', '查詢中…', 'muted'));
+    const progress = node('div', '', 'query-progress');
+    article.append(progress, body);
+    body.append(node('p', '查詢中…', 'muted lookup-placeholder'));
     region.append(article);
-    return body;
+    return { body, progress };
   });
   $('search-note').textContent = searchHelp;
 
@@ -245,7 +307,8 @@ async function search({ live = false } = {}) {
     while (!signal.aborted && next < queries.length) {
       const index = next++;
       const input = queries[index], key = normalize(input);
-      const body = cards[index];
+      const { body, progress } = cards[index];
+      const finish = lookupProgress(progress, '查詢 · 預估進度', signal);
       const local = currentEngine.suggest(input);
       const exact = c => c.id === key || c.code === key || exactName(c, input);
       let candidates = local, failed = false;
@@ -262,8 +325,8 @@ async function search({ live = false } = {}) {
       }
       if (signal.aborted) return;
       const matches = candidates.filter(exact);
-      const select = c => { rememberCompany(c); showCompany(body, c); };
-      if (matches.length === 1) select(matches[0]);
+      const select = (c, pending) => { rememberCompany(c); showCompany(body, c, pending); };
+      if (matches.length === 1) select(matches[0], finish);
       else if (candidates.length) {
         const options = node('div', '', 'suggestions');
         body.replaceChildren(node('h3', matches.length ? '同名結果' : '建議結果'), options);
@@ -274,6 +337,8 @@ async function search({ live = false } = {}) {
         body.replaceChildren(node('h3', failed ? '資料暫時無法取得' : '查無相符資料'));
         body.append(safeLink('https://findbiz.nat.gov.tw/fts/query/QueryBar/queryInit.do', '商工登記查詢'));
       }
+      if (matches.length !== 1) finish(!failed);
+      body.classList.add('lookup-settled');
       complete++;
       count.textContent = complete === queries.length ? `共 ${complete} 筆` : `查詢中 · ${complete} / ${queries.length}`;
     }
@@ -384,7 +449,7 @@ async function runBatch() {
   snapshot.taxLookup = engine.taxLookup;
   const registry = snapshot.remoteRegistry.bind(snapshot);
   snapshot.remoteRegistry = async (query, requestSignal) => { if (!snapshot.cache.has(query)) { await delay(Math.max(0, 900 - (Date.now() - lastRequest)), requestSignal); lastRequest = Date.now(); } return registry(query, requestSignal); };
-  setRunning(true); page = 0; $('batch-results').hidden = false; $('batch-progress').max = results.length;
+  setRunning(true); page = 0; $('batch-results').hidden = false; $('batch-progress').max = results.length; $('batch-progress').value = 0;
   const map = mappingFromControls(); $('paste-location').textContent = `貼回「${sheet.name}」空白欄第 ${map.start} 列，共 ${results.length} 列。請先取消篩選並保留列順序。`;
   let completed = 0;
   try {
@@ -396,7 +461,16 @@ async function runBatch() {
         if (memo.has(key)) {
           const resolved = structuredClone(memo.get(key)); results[i] = { ...row, ...resolved, row: row.row, group: row.group, shop: row.shop, store: row.store, hidden: row.hidden, rawID: row.rawID, audit: [row.audit, resolved.audit].filter(Boolean).filter((v, j, a) => a.indexOf(v) === j).join('；') };
         } else {
-          results[i] = await resolveRow(snapshot, { ...row, audit: '' }, { online, signal }); if (!results[i].status.startsWith('暫時')) memo.set(key, structuredClone(results[i]));
+          const finish = lookupProgress($('batch-row-progress'), `第 ${row.row} 列 · 預估進度`, signal);
+          try {
+            results[i] = await resolveRow(snapshot, { ...row, audit: '' }, { online, signal });
+          } catch (error) {
+            finish(false);
+            throw error;
+          }
+          const failed = results[i].status.startsWith('暫時');
+          finish(!failed);
+          if (!failed && !signal.aborted) memo.set(key, structuredClone(results[i]));
           results[i].audit = [row.audit, results[i].audit].filter(Boolean).join('；');
         }
       }
@@ -467,9 +541,32 @@ function copyBatch() {
   copyText(makeTSV(results, source), html);
 }
 
-for (const mode of ['single', 'batch']) $(`tab-${mode}`).addEventListener('click', () => {
-  for (const name of ['single', 'batch']) { $(`tab-${name}`).classList.toggle('active', name === mode); $(`tab-${name}`).setAttribute('aria-selected', String(name === mode)); $(`${name}-panel`).hidden = name !== mode; }
-});
+const tabs = ['single', 'batch'];
+function switchTab(mode) {
+  const switcher = $('tab-switch');
+  if (switcher.dataset.active === mode) return;
+  switcher.dataset.active = mode;
+  for (const name of tabs) {
+    const selected = name === mode;
+    const button = $(`tab-${name}`);
+    const panel = $(`${name}-panel`);
+    button.setAttribute('aria-selected', String(selected));
+    button.tabIndex = selected ? 0 : -1;
+    panel.classList.toggle('panel-enter', selected);
+    panel.hidden = !selected;
+  }
+}
+
+for (const mode of tabs) {
+  $(`tab-${mode}`).addEventListener('click', () => switchTab(mode));
+  $(`tab-${mode}`).addEventListener('keydown', event => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const next = event.key === 'Home' ? 'single' : event.key === 'End' ? 'batch' : mode === 'single' ? 'batch' : 'single';
+    switchTab(next);
+    $(`tab-${next}`).focus();
+  });
+}
 let composing = false;
 
 function queueSearch() {
