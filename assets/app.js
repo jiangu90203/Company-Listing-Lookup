@@ -1,11 +1,11 @@
-import { normalize, Engine, displayDate, exactName, applyCompany, auditReference, resolveRow } from './engine.js?v=1.5.0';
-import { TaxIndex } from './tax.js?v=1.5.0';
+import { normalize, Engine, displayDate, exactName, applyCompany, auditReference, resolveRow } from './engine.js?v=1.5.1';
+import { TaxIndex } from './tax.js?v=1.5.1';
 import { parseDelimited, detectMapping, buildRows, worksheetToSheet, bestWorksheetName, guardArchive, columnName, makeTSV, makeCSV, reportCells, alignedCells, counts } from './batch.js';
 
 const $ = id => document.getElementById(id);
 const node = (tag, text = '', className = '') => { const n = document.createElement(tag); n.textContent = text; if (className) n.className = className; return n; };
 let engine, book, sheet, mapping, preview = [], results = [], running = false, controller, page = 0, toastTimer;
-const message = (text, type = '') => { $('global-message').className = `notice ${type}`; $('global-message').textContent = text; };
+const message = (text, type = '') => { $('global-message').className = `notice ${type}`; $('global-message').textContent = text; $('global-message').hidden = !text; };
 function toast(text) { $('toast').textContent = text; $('toast').hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => $('toast').hidden = true, 4200); }
 function badge(status) { return node('span', status || '保留空格', 'badge ' + (/^(待|暫時|未查詢|缺少)/.test(status) ? 'pending' : status?.includes('關聯') ? 'related' : ['上市', '上櫃', '興櫃'].includes(status) ? '' : 'unknown')); }
 function safeLink(url, label) {
@@ -38,10 +38,10 @@ function companyFields(c, tax) {
   const invoice = { Y: '是', N: '否' }[tax?.invoice];
   const address = c.address && c.address !== c.area ? c.address : '';
   return [
-    ['統一編號', c.id], ['股票代號', c.code], ['股票簡稱', c.short],
+    ['統一編號', c.id, c.code ? '' : 'wide'], ['股票代號', c.code],
     ['營業地址（稅籍）', tax?.address || c.taxAddress, 'wide'],
     [c.sourceKey === 'registry' ? '登記地址' : '公司地址（掛牌名單）', address && address !== tax?.address && address !== c.taxAddress ? address : '', 'wide'],
-    ['組織類型', tax?.organization], ['稅籍設立日期', tax?.founded ? displayDate(tax.founded) : ''],
+    ['股票簡稱', c.short], ['組織類型', tax?.organization], ['稅籍設立日期', tax?.founded ? displayDate(tax.founded) : ''],
     ['稅籍資本額', /^\d+$/.test(tax?.capital || '') ? `NT$ ${BigInt(tax.capital).toLocaleString('en-US')}` : tax?.capital],
     ['使用統一發票', invoice], ['總機構統編', c.registeredHeadID],
     ['董事長／代表人', c.chairman], ['公司電話', c.phone],
@@ -115,7 +115,7 @@ function showCompany(box, c) {
     appendFields(grid, fields);
     appendFields(sources, links.map(([label, url]) => [label, url, 'wide', true]));
     detailStatus.textContent = c.sourceKey === 'registry' && !fields.some(([label]) => label.includes('地址'))
-      ? (c.area ? `登記地區為${c.area}。目前來源未提供完整地址。` : '目前來源未提供完整地址。')
+      ? (c.area ? `登記地區 ${c.area}（缺完整地址）` : '來源缺少完整地址。')
       : '';
   }
   copy.addEventListener('click', () => copyText([
@@ -124,7 +124,7 @@ function showCompany(box, c) {
   ].map(([label, value]) => `${label}：${value}`).join('\n')));
   renderDetails(c.remoteTax);
   if (!c.id) return;
-  detailStatus.textContent = '載入稅籍明細中…';
+  detailStatus.textContent = '載入稅籍明細…';
   const currentEngine = engine;
   currentEngine.taxDetails(c.id).then(tax => {
     if (box.contains(grid)) renderDetails(tax || c.remoteTax);
@@ -148,7 +148,7 @@ function renderRecent() {
   const container = $('recent-list');
   container.replaceChildren();
   $('clear-recent').hidden = !recent.length;
-  if (!recent.length) container.append(node('span', '尚無查詢紀錄', 'muted'));
+  $('history').hidden = !recent.length;
   for (const entry of recent) {
     const button = node('button', entry.name, 'recent-item');
     button.type = 'button';
@@ -194,27 +194,26 @@ function renderSuggestions(container, companies, select, limit = 10) {
   }
 }
 
-const searchHelp = '可混合輸入名稱與統編，多筆請用半形逗號分隔。';
-let searchController, suggestionTimer;
+const searchHelp = '多筆請用逗號分隔。';
+let searchController, searchTimer;
 function resetSearch() {
   searchController?.abort();
-  clearTimeout(suggestionTimer);
-  $('suggestions').replaceChildren();
+  clearTimeout(searchTimer);
   $('company-result').replaceChildren();
   $('company-result').hidden = true;
 }
 
-async function search() {
+async function search({ live = false } = {}) {
   if (!engine) return;
   const queries = $('query').value.split(/[,，]/u).map(value => value.trim()).filter(Boolean);
   resetSearch();
   if (queries.length > 50) {
-    $('search-note').textContent = '一次可查詢 50 筆。更多資料可使用「試算表批次比對」。';
+    $('search-note').textContent = '每次最多 50 筆，更多請用試算表比對。';
     return;
   }
   if (!queries.length) {
     $('search-note').textContent = searchHelp;
-    $('query').focus();
+    if (!live) $('query').focus();
     return;
   }
 
@@ -226,12 +225,14 @@ async function search() {
   region.hidden = false;
   const overview = node('div', '', 'results-title');
   const count = node('span', '', 'results-count');
+  count.setAttribute('role', 'status');
   overview.append(node('h2', '查詢結果'), count);
   region.append(overview);
   const cards = queries.map(query => {
     const article = node('article', '', 'card result-card');
     const body = node('div');
-    article.append(node('p', query, 'query-label'), body);
+    if (queries.length > 1) article.append(node('p', query, 'query-label'));
+    article.append(body);
     body.append(node('p', '查詢中…', 'muted'));
     region.append(article);
     return body;
@@ -248,10 +249,15 @@ async function search() {
       const local = currentEngine.suggest(input);
       const exact = c => c.id === key || c.code === key || exactName(c, input);
       let candidates = local, failed = false;
-      if (online && !local.some(exact)) {
+      const partialNumber = live && /^\d+$/u.test(key) && key.length < 8;
+      const shortName = live && !/^\d+$/u.test(key) && [...key].length < 2;
+      if (online && !local.some(exact) && !partialNumber && !shortName) {
         try {
-          const remote = await currentEngine.registry(input, signal);
-          candidates = [...new Map([...local, ...remote].map(c => [c.id || c.code || c.name, c])).values()];
+          const extra = await currentEngine.registry(input, signal, {
+            remote: !live || local.length === 0,
+            preferSuggestions: live
+          });
+          candidates = [...new Map([...local, ...extra].map(c => [c.id || c.code || c.name, c])).values()];
         } catch { failed = true; }
       }
       if (signal.aborted) return;
@@ -260,12 +266,13 @@ async function search() {
       if (matches.length === 1) select(matches[0]);
       else if (candidates.length) {
         const options = node('div', '', 'suggestions');
-        body.replaceChildren(node('p', matches.length ? '找到多筆同名登記，請依統編或地區選擇。' : '請選擇符合的登記資料。', 'muted'), options);
+        body.replaceChildren(node('h3', matches.length ? '同名結果' : '建議結果'), options);
         renderSuggestions(options, matches.length ? matches : candidates, select);
+      } else if (partialNumber || shortName) {
+        body.replaceChildren(node('p', partialNumber ? '請輸入完整 8 碼統編。' : '請繼續輸入名稱。', 'muted'));
       } else {
-        body.replaceChildren(node('h3', failed ? '暫時無法完成查詢' : '未找到相符的登記資料'));
-        if (failed) body.append(node('p', '資料來源暫時無法連線，可以重新查詢。', 'muted'));
-        body.append(safeLink('https://findbiz.nat.gov.tw/fts/query/QueryBar/queryInit.do', '前往經濟部商工登記查詢'));
+        body.replaceChildren(node('h3', failed ? '資料暫時無法取得' : '查無相符資料'));
+        body.append(safeLink('https://findbiz.nat.gov.tw/fts/query/QueryBar/queryInit.do', '商工登記查詢'));
       }
       complete++;
       count.textContent = complete === queries.length ? `共 ${complete} 筆` : `查詢中 · ${complete} / ${queries.length}`;
@@ -281,8 +288,8 @@ function renderData() {
     if (age > 3 * 86400000) stale = true;
     const item = node('div', '', 'source-card'); item.append(safeLink(d.reference, d.companies[0]?.market || d.key), node('strong', `${d.companies.length.toLocaleString()} 家`), node('p', `出表 ${pretty}`), node('p', `取得 ${displayDate(d.fetchedAt)}`)); $('data-sources').append(item);
   }
-  $('relationship-date').textContent = `關係補充查證日：${engine.relationships.checkedAt}；超過 90 天列待複核。`;
-  message(stale ? '部分官方名單出表日期已超過 3 天，請查看下方日期。重新載入只會取得此網站已發布的名單。' : '官方名單已就緒。試算表在本機處理，查詢結果會附資料日期與來源。', stale ? 'warn' : '');
+  $('relationship-date').textContent = `關聯查證日 ${engine.relationships.checkedAt}`;
+  message(stale ? '部分名單已超過 3 天。' : '', stale ? 'warn' : '');
 }
 async function loadData() {
   $('reload-data').disabled = true;
@@ -298,11 +305,11 @@ async function loadData() {
     renderData();
     openTax().then(index => {
       $('tax-date').replaceChildren(safeLink(index.manifest.source, '財政部營業中稅籍'), document.createTextNode(` · ${displayDate(index.manifest.date)} · ${index.manifest.count.toLocaleString()} 筆`));
-    }).catch(() => { $('tax-date').textContent = '稅籍索引暫時無法載入，查詢時會重試。'; });
+    }).catch(() => { $('tax-date').textContent = '稅籍索引載入失敗。'; });
     $('query').disabled = false; $('search-btn').disabled = false;
     if (!$('company-result').hidden) search();
     if (sheet) refreshPreview();
-  } catch { message('無法載入網站名單。請確認 data 資料夾有一起上傳，並從 GitHub Pages 網址開啟；不要直接雙擊本機 HTML。', 'error'); }
+  } catch { message('名單載入失敗，請重新載入。', 'error'); }
   finally { $('reload-data').disabled = false; }
 }
 function mappingFromControls() { return { ...mapping, name: Number($('name-col').value), id: Number($('id-col').value), code: Number($('code-col').value), market: Number($('market-col').value), start: Number($('start-row').value), end: Number($('end-row').value) }; }
@@ -331,7 +338,7 @@ function refreshPreview() {
   try {
     preview = buildRows(sheet, mappingFromControls());
     const n = counts(preview), companyCount = preview.filter(r => !r.excluded && r.kind !== 'missing').length;
-    $('preview-note').className = 'notice subtle'; $('preview-note').textContent = `共 ${n.total} 列：${companyCount} 列待比對、${n.missing} 列缺少公司名稱、${n.excluded} 列分批／空白保留。shop id 不會自動視為統編。`;
+    $('preview-note').className = 'notice subtle'; $('preview-note').textContent = `${n.total} 列 · 待比對 ${companyCount} · 缺名稱 ${n.missing} · 保留空白／分批 ${n.excluded}`;
     $('preview-body').replaceChildren();
     for (const row of preview.slice(0, 8)) {
       const tr = node('tr'); [row.row, row.name || '（空白）', row.id, row.excluded ? '排除查詢，貼回保留空格' : row.status === '缺少公司名稱' ? row.status : '參與比對'].forEach(text => tr.append(node('td', String(text)))); $('preview-body').append(tr);
@@ -378,8 +385,7 @@ async function runBatch() {
   const registry = snapshot.remoteRegistry.bind(snapshot);
   snapshot.remoteRegistry = async (query, requestSignal) => { if (!snapshot.cache.has(query)) { await delay(Math.max(0, 900 - (Date.now() - lastRequest)), requestSignal); lastRequest = Date.now(); } return registry(query, requestSignal); };
   setRunning(true); page = 0; $('batch-results').hidden = false; $('batch-progress').max = results.length;
-  const map = mappingFromControls(); $('paste-location').textContent = `貼回位置：原表「${sheet.name}」空白欄的第 ${map.start} 列開始，共 ${results.length} 列。請先取消原表篩選；不要排序或刪列。`;
-  $('snapshot-note').textContent = '本批次使用同一份名單快照';
+  const map = mappingFromControls(); $('paste-location').textContent = `貼回「${sheet.name}」空白欄第 ${map.start} 列，共 ${results.length} 列。請先取消篩選並保留列順序。`;
   let completed = 0;
   try {
     for (let i = 0; i < results.length; i++) {
@@ -409,7 +415,7 @@ function filteredResults() {
 }
 function renderResults() {
   const n = counts(results); $('count-official').textContent = n.official; $('count-related').textContent = n.related; $('count-pending').textContent = n.pending; $('count-excluded').textContent = n.excluded;
-  $('result-summary').textContent = `共 ${n.total} 列 · 缺少名稱 ${n.missing} 列${running ? ` · 比對中 ${$('batch-progress').value}/${results.length}` : ' · 點選「核對」可查看來源與候選'}`;
+  $('result-summary').textContent = `共 ${n.total} 列 · 缺少名稱 ${n.missing} 列${running ? ` · 比對中 ${$('batch-progress').value}/${results.length}` : ''}`;
   const filtered = filteredResults(), pages = Math.max(1, Math.ceil(filtered.length / 100)); page = Math.min(page, pages - 1); $('results-body').replaceChildren();
   for (const row of filtered.slice(page * 100, (page + 1) * 100)) {
     const tr = node('tr'), name = node('td', row.name || (row.kind === 'batch' ? row.group : '（空白）')), status = node('td'), detail = node('td'), action = node('td');
@@ -464,32 +470,31 @@ function copyBatch() {
 for (const mode of ['single', 'batch']) $(`tab-${mode}`).addEventListener('click', () => {
   for (const name of ['single', 'batch']) { $(`tab-${name}`).classList.toggle('active', name === mode); $(`tab-${name}`).setAttribute('aria-selected', String(name === mode)); $(`${name}-panel`).hidden = name !== mode; }
 });
-function suggestInput() {
+let composing = false;
+
+function queueSearch() {
   resetSearch();
-  const input = $('query').value.trim();
   $('search-note').textContent = searchHelp;
-  if (!engine || !input || /[,，]/u.test(input)) return;
-  const container = $('suggestions');
-  const local = engine.suggest(input);
-  function select(c) {
-    $('query').value = c.id || c.code || c.name;
-    search();
+  if (!composing && $('query').value.trim()) {
+    searchTimer = setTimeout(() => search({ live: true }), 320);
   }
-  renderSuggestions(container, local, select);
-  if (!$('single-online').checked || normalize(input).length < 2 || /^\d+$/.test(normalize(input))) return;
-  suggestionTimer = setTimeout(async () => {
-    try {
-      const tax = await engine.taxLookup(input);
-      if ($('query').value.trim() !== input || !$('company-result').hidden || !$('single-online').checked) return;
-      const all = [...new Map([...local, ...tax.map(c => engine.enrich(c))].map(c => [c.id || c.code || c.name, c])).values()];
-      all.sort((a, b) => Number(exactName(b, input)) - Number(exactName(a, input)));
-      renderSuggestions(container, all, select);
-    } catch { /* Submit retries the request. */ }
-  }, 280);
 }
-$('query').addEventListener('input', suggestInput);
-$('single-online').addEventListener('change', suggestInput);
-$('search-form').addEventListener('submit', e => { e.preventDefault(); search(); });
+$('query').addEventListener('compositionstart', () => {
+  composing = true;
+  resetSearch();
+});
+$('query').addEventListener('compositionend', () => {
+  composing = false;
+  queueSearch();
+});
+$('query').addEventListener('input', event => {
+  if (!event.isComposing) queueSearch();
+});
+$('single-online').addEventListener('change', queueSearch);
+$('search-form').addEventListener('submit', event => {
+  event.preventDefault();
+  if (!composing) search();
+});
 $('clear-recent').addEventListener('click', () => { recent = []; saveRecent(); });
 renderRecent();
 $('reload-data').addEventListener('click', loadData);

@@ -1,4 +1,4 @@
-export const VERSION = '1.5.0';
+export const VERSION = '1.5.1';
 export const normalize = value => String(value ?? '').normalize('NFKC').replace(/[\s\u200b\ufeff]/gu, '').replaceAll('臺', '台').toLowerCase();
 export const validID = value => /^\d{8}$/.test(value) && value !== '00000000';
 export const exactName = (company, name) => !!normalize(name) && [company.name, company.short?.replace(/\*+$/, ''), ...(company.aliases || [])].some(v => normalize(v) === normalize(name));
@@ -95,7 +95,7 @@ export class Engine {
     const q = normalize(name);
     return q.endsWith('分公司') ? this.official.filter(c => q.startsWith(normalize(c.name)) && q !== normalize(c.name)) : [];
   }
-  async registry(input, signal) {
+  async registry(input, signal, { remote = true, preferSuggestions = false } = {}) {
     const key = normalize(input);
     const query = validID(key) ? key : String(input).normalize('NFKC').trim();
     let tax = [], indexError;
@@ -106,6 +106,11 @@ export class Engine {
       if (tax.some(c => c.id === query || exactName(c, query))) return tax;
       // Omitting a legal prefix can identify several entities. Offer the choices immediately.
       if (tax.some(c => normalize(c.name).replace(/^(社團法人|財團法人)/u, '') === key)) return tax;
+    }
+    if (preferSuggestions && tax.length) return tax;
+    if (!remote) {
+      if (indexError) throw indexError;
+      return tax;
     }
     try {
       const learned = [...this.knownRemote.values()].filter(c => c.id === query || exactName(c, query));

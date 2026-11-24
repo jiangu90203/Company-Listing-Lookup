@@ -1,4 +1,4 @@
-公司上市櫃快查 GitHub Pages 版 v1.5.0
+公司上市櫃快查 GitHub Pages 版 v1.5.1
 
 最快使用（固定隨附名單）
 1. ZIP 全部解壓縮，不要直接上傳 ZIP。
